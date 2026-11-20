@@ -1,0 +1,159 @@
+<!DOCTYPE html>
+<html lang="th">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
+<meta name="robots" content="noindex, nofollow">
+<meta name="referrer" content="no-referrer">
+<meta name="theme-color" content="#e8ecfb">
+<title>แบบสอบถามการย้ายที่ทำการ</title>
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+<link href="https://fonts.googleapis.com/css2?family=Prompt:wght@400;500;600&display=swap" rel="stylesheet">
+<style>
+:root{
+  --bg:#e8ecfb; --pri:#2b3cf0; --pri2:#4a5cff; --ink:#14173a; --mut:#6b7094;
+  /* ความสูงแถบ "แอปพลิเคชันนี้สร้างโดยผู้ใช้ Google Apps Script" ที่จะเลื่อนขึ้นไปซ่อน
+     ถ้ายังเห็นขอบแถบโผล่ ให้เพิ่มค่า / ถ้าตัดหัวเนื้อหาของแอปไปด้วย ให้ลดค่า */
+  --crop:44px;
+}
+*{box-sizing:border-box}
+html,body{
+  margin:0; padding:0; width:100%; height:100%;
+  overflow:hidden;               /* ไม่มี scrollbar ชั้นนอก */
+  background:var(--bg);
+  overscroll-behavior:none;
+  scrollbar-width:none;
+}
+html::-webkit-scrollbar,body::-webkit-scrollbar{display:none}
+
+/* ตัวห่อเต็มจอ: ใช้ dvh กัน address bar มือถือบัง + เว้น safe area (notch / home bar) */
+#app{
+  position:fixed; inset:0;
+  width:100%;
+  height:100vh;                  /* fallback เบราว์เซอร์เก่า */
+  height:100dvh;
+  padding:env(safe-area-inset-top,0px) env(safe-area-inset-right,0px) env(safe-area-inset-bottom,0px) env(safe-area-inset-left,0px);
+  background:var(--bg);
+}
+#viewport{position:relative; width:100%; height:100%; overflow:hidden}
+
+/* iframe เลื่อนขึ้นเท่าความสูงแถบ แล้วขยายลงให้ขอบล่างตรงกับหน้าจอพอดี → แถบโดนตัดออกนอกกรอบ */
+#frame{
+  position:absolute; left:0;
+  top:calc(-1 * var(--crop));
+  width:100%;
+  height:calc(100% + var(--crop));
+  border:0; margin:0; padding:0;
+  background:var(--bg);
+  opacity:0;
+  transition:opacity .5s ease;
+}
+#frame.ready{opacity:1}
+
+/* หน้าจอ loading */
+#loader{
+  position:fixed; inset:0; z-index:10;
+  display:flex; flex-direction:column; align-items:center; justify-content:center; gap:18px;
+  background:var(--bg); color:var(--ink);
+  font-family:'Prompt',system-ui,-apple-system,'Segoe UI',sans-serif;
+  padding:env(safe-area-inset-top,0px) env(safe-area-inset-right,0px) env(safe-area-inset-bottom,0px) env(safe-area-inset-left,0px);
+  transition:opacity .5s ease, visibility 0s linear .5s;
+}
+#loader.out{opacity:0; visibility:hidden; pointer-events:none}
+.spin{
+  width:46px; height:46px; border-radius:50%;
+  border:4px solid #d6dcfa; border-top-color:var(--pri);
+  animation:spin .8s linear infinite;
+}
+.lt{font-size:16px; font-weight:500; margin:0}
+.ls{font-size:13px; color:var(--mut); margin:0; text-align:center; max-width:280px; line-height:1.6; min-height:21px}
+#retry{
+  display:none; border:0; border-radius:999px; padding:10px 22px; cursor:pointer;
+  font:inherit; font-weight:500; font-size:14px; color:#fff;
+  background:linear-gradient(135deg,var(--pri2),var(--pri));
+}
+#loader.slow #retry{display:inline-block}
+@keyframes spin{to{transform:rotate(360deg)}}
+@media (prefers-reduced-motion:reduce){
+  .spin{animation-duration:2s}
+  #frame,#loader{transition-duration:.01s}
+}
+noscript{position:fixed; inset:0; z-index:20; display:grid; place-items:center; background:var(--bg); font-family:sans-serif; padding:24px; text-align:center}
+</style>
+</head>
+<body>
+
+<div id="app">
+  <div id="viewport">
+    <iframe id="frame" title="แบบสอบถามการย้ายที่ทำการ" referrerpolicy="no-referrer"
+            allow="clipboard-write; fullscreen" allowfullscreen></iframe>
+  </div>
+</div>
+
+<div id="loader" role="status" aria-live="polite">
+  <div class="spin" aria-hidden="true"></div>
+  <p class="lt">กำลังโหลด...</p>
+  <p class="ls" id="ls">กรุณารอสักครู่</p>
+  <button id="retry" type="button">ลองโหลดอีกครั้ง</button>
+</div>
+
+<noscript>กรุณาเปิด JavaScript เพื่อใช้งานแบบสอบถาม</noscript>
+
+<script>
+(function () {
+  // ▼▼ ใส่ลิงก์ Web app (ลงท้าย /exec) ที่ได้จากการ Deploy ▼▼
+  var EXEC_URL = 'https://script.google.com/macros/s/AKfycbwHnOdAxgco0K7snaL43EsNk3_Fez2fEJ2qZ6tatR2vGEcy544e01kVKWTFASQcSGsu-A/exec';
+  // ▲▲▲▲▲▲▲▲▲▲▲▲▲▲▲▲▲▲▲▲▲▲▲▲▲▲▲▲▲▲▲▲▲▲▲▲▲▲▲▲▲▲▲▲▲▲▲▲▲▲▲▲▲▲▲
+
+  var MIN_SHOW = 600;      // แสดง loading อย่างน้อย (มิลลิวินาที) กันกะพริบ
+  var SETTLE   = 350;      // รอให้หน้าในแอปวาดเสร็จหลัง iframe load
+  var SLOW_AT  = 15000;    // นานเกินนี้ให้แสดงปุ่มลองใหม่
+
+  var frame = document.getElementById('frame');
+  var loader = document.getElementById('loader');
+  var ls = document.getElementById('ls');
+  var started = Date.now(), done = false, slowTimer;
+
+  // ส่งต่อพารามิเตอร์ใน address bar ไปยังแอป เช่น ?page=admin&k=รหัสลิงก์ลับ
+  // (address bar ยังเป็นโดเมนของคุณ ไม่มีการ redirect)
+  function buildSrc() {
+    var q = window.location.search || '';
+    return EXEC_URL + q;
+  }
+
+  function finish() {
+    if (done) return;
+    done = true;
+    clearTimeout(slowTimer);
+    var wait = Math.max(0, MIN_SHOW - (Date.now() - started)) + SETTLE;
+    setTimeout(function () {
+      frame.classList.add('ready');
+      loader.classList.add('out');
+      loader.classList.remove('slow');
+      setTimeout(function () { loader.setAttribute('aria-hidden', 'true'); }, 600);
+    }, wait);
+  }
+
+  function load() {
+    done = false; started = Date.now();
+    loader.classList.remove('out', 'slow');
+    loader.removeAttribute('aria-hidden');
+    frame.classList.remove('ready');
+    ls.textContent = 'กรุณารอสักครู่';
+    clearTimeout(slowTimer);
+    slowTimer = setTimeout(function () {
+      if (done) return;
+      ls.textContent = 'ใช้เวลานานกว่าปกติ ตรวจสอบอินเทอร์เน็ตแล้วลองอีกครั้ง';
+      loader.classList.add('slow');
+    }, SLOW_AT);
+    frame.src = buildSrc();
+  }
+
+  frame.addEventListener('load', finish);
+  document.getElementById('retry').addEventListener('click', load);
+  load();
+})();
+</script>
+</body>
+</html>
