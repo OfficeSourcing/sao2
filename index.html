@@ -13,9 +13,8 @@
 <style>
 :root{
   --bg:#e8ecfb; --pri:#2b3cf0; --pri2:#4a5cff; --ink:#14173a; --mut:#6b7094;
-  /* ความสูงแถบ "แอปพลิเคชันนี้สร้างโดยผู้ใช้ Google Apps Script" ที่จะเลื่อนขึ้นไปซ่อน
-     ถ้ายังเห็นขอบแถบโผล่ ให้เพิ่มค่า / ถ้าตัดหัวเนื้อหาของแอปไปด้วย ให้ลดค่า */
-  --crop:44px;
+  /* ค่าเริ่มต้น 0 = ไม่ครอป (ตั้งค่าจริงที่ CROP_PX ในสคริปต์ หรือทดสอบด้วย ?_crop=44 ท้ายลิงก์) */
+  --crop:0px;
 }
 *{box-sizing:border-box}
 html,body{
@@ -110,6 +109,16 @@ noscript{position:fixed; inset:0; z-index:20; display:grid; place-items:center; 
   var SETTLE   = 350;      // รอให้หน้าในแอปวาดเสร็จหลัง iframe load
   var SLOW_AT  = 15000;    // นานเกินนี้ให้แสดงปุ่มลองใหม่
 
+  // ความสูง (px) ที่จะเลื่อน iframe ขึ้นไปซ่อนแถบ Apps Script
+  // 0 = ไม่ครอป (ใช้ในกรณีที่แถบไม่ขึ้นอยู่แล้ว) ทดสอบได้ด้วยการต่อท้ายลิงก์ ?_crop=40
+  var CROP_PX = 0;
+  var params = new URLSearchParams(window.location.search);
+  if (params.has('_crop')) {
+    CROP_PX = Math.max(0, Math.min(80, parseInt(params.get('_crop'), 10) || 0));
+    params.delete('_crop');
+  }
+  document.documentElement.style.setProperty('--crop', CROP_PX + 'px');
+
   var frame = document.getElementById('frame');
   var loader = document.getElementById('loader');
   var ls = document.getElementById('ls');
@@ -118,8 +127,8 @@ noscript{position:fixed; inset:0; z-index:20; display:grid; place-items:center; 
   // ส่งต่อพารามิเตอร์ใน address bar ไปยังแอป เช่น ?page=admin&k=รหัสลิงก์ลับ
   // (address bar ยังเป็นโดเมนของคุณ ไม่มีการ redirect)
   function buildSrc() {
-    var q = window.location.search || '';
-    return EXEC_URL + q;
+    var q = params.toString();
+    return EXEC_URL + (q ? '?' + q : '');
   }
 
   function finish() {
